@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 4: Movie Data Scatter Plots</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .plot {
+            margin-bottom: 60px;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .legend {
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lab 4: Movie Data Visualization</h1>
+
+    <!-- Part A: Plot 1 - Wins+Nominations vs IMDb Rating -->
+    <div class="container">
+        <div id="plot1" class="plot"></div>
+    </div>
+
+    <!-- Part A: Plot 2 - Budget vs IMDb Rating -->
+    <div class="container">
+        <div id="plot2" class="plot"></div>
+    </div>
+
+    <!-- Part B: Votes vs IMDb Rating (sized by Wins+Noms) -->
+    <div class="container">
+        <div id="plot3" class="plot"></div>
+    </div>
+
+    <!-- Part C: Plot 1 - Square root scale -->
+    <div class="container">
+        <div id="plot4" class="plot"></div>
+    </div>
+
+    <!-- Part C: Plot 2 - Log scale -->
+    <div class="container">
+        <div id="plot5" class="plot"></div>
+    </div>
+
+    <script>
+        // Parse CSV data
+        d3.csv("movies.csv").then(function(data) {
+            console.log("Data loaded:", data.length, "rows");
+            
+            // Convert strings to numbers
+            data.forEach(function(d) {
+                d.imdbRating = +d.imdbRating;
+                d.imdbVotes = +d.imdbVotes;
+                d.Budget = +d.Budget;
+                d.WinsNoms = +d.WinsNoms;
+                d.IsGoodRating = +d.IsGoodRating;
+            });
+            
+            console.log("Data processed. Sample:", data[0]);
+
+            // Common dimensions
+            const margin = {top: 60, right: 100, bottom: 60, left: 80};
+            const width = 900 - margin.left - margin.right;
+            const height = 500 - margin.top - margin.bottom;
+
+            // Helper function to create cross symbol
+            function createCrossSymbol() {
+                return d3.symbol().type(d3.symbolCross).size(36);
+            }
+
+            // Helper function to create scatter plot
+            function createScatterPlot(containerId, xData, yData, xLabel, yLabel, title, 
+                                     xScaleType = d3.scaleLinear, yScaleType = d3.scaleLinear,
+                                     sizeScale = null) {
+                const svg = d3.select(containerId)
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom);
+
+                const g = svg.append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                // Create scales
+                const xScale = xScaleType()
+                    .domain(d3.extent(data, xData))
+                    .range([0, width])
+                    .nice();
+
+                const yExtent = d3.extent(data, yData);
+                let yScale;
+                if (yScaleType === d3.scaleSqrt) {
+                    // Square root scale - handle 0 values
+                    yScale = d3.scaleSqrt()
+                        .domain([0, yExtent[1]])
+                        .range([height, 0])
+                        .nice();
+                } else if (yScaleType === d3.scaleLog) {
+                    // Log scale - handle 0 values by using minimum positive value
+                    const positiveValues = data.filter(d => yData(d) > 0).map(yData);
+                    const minValue = positiveValues.length > 0 ? d3.min(positiveValues) : 1;
+                    yScale = d3.scaleLog()
+                        .domain([minValue, yExtent[1]])
+                        .range([height, 0])
+                        .nice();
+                } else {
+                    yScale = yScaleType()
+                        .domain(yExtent)
+                        .range([height, 0])
+                        .nice();
+                }
+
+                // Create axes
+                const xAxis = d3.axisBottom(xScale);
+                const yAxis = d3.axisLeft(yScale);
+
+                g.append("g")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(xAxis);
+
+                g.append("g")
+                    .call(yAxis);
+
+                // Add axis labels
+                g.append("text")
+                    .attr("transform", "translate(" + (width / 2) + " ," + (height + margin.bottom - 10) + ")")
+                    .style("text-anchor", "middle")
+                    .attr("class", "axis-label")
+                    .text(xLabel);
+
+                g.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - margin.left)
+                    .attr("x", 0 - (height / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .attr("class", "axis-label")
+                    .text(yLabel);
+
+                // Add title
+                g.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", -30)
+                    .attr("text-anchor", "middle")
+                    .attr("class", "title")
+                    .text(title);
+
+                // Separate data by rating
+                const goodData = data.filter(d => d.IsGoodRating === 1);
+                const badData = data.filter(d => d.IsGoodRating === 0);
+
+                // Plot good rating (blue crosses)
+                g.selectAll(".good-point")
+                    .data(goodData)
+                    .enter().append("path")
+                    .attr("d", d => {
+                        const baseSize = 36;
+                        const size = sizeScale ? sizeScale(d.WinsNoms) : baseSize;
+                        return d3.symbol().type(d3.symbolCross).size(size)();
+                    })
+                    .attr("transform", d => {
+                        const x = xScale(xData(d));
+                        const y = yScale(yData(d));
+                        return "translate(" + x + "," + y + ")";
+                    })
+                    .attr("fill", "blue")
+                    .attr("stroke", "blue")
+                    .attr("stroke-width", 1.5);
+
+                // Plot bad rating (red circles)
+                g.selectAll(".bad-point")
+                    .data(badData)
+                    .enter().append("circle")
+                    .attr("cx", d => xScale(xData(d)))
+                    .attr("cy", d => yScale(yData(d)))
+                    .attr("r", d => {
+                        if (sizeScale) {
+                            // Convert area to radius: area = sizeScale(d.WinsNoms), so r = sqrt(area/π)
+                            const area = sizeScale(d.WinsNoms);
+                            return Math.sqrt(area / Math.PI);
+                        }
+                        return 4;
+                    })
+                    .attr("fill", "red")
+                    .attr("stroke", "red")
+                    .attr("stroke-width", 1.5);
+
+                // Add legend
+                const legend = g.append("g")
+                    .attr("transform", "translate(" + (width - 80) + ", 20)");
+
+                legend.append("path")
+                    .attr("d", createCrossSymbol())
+                    .attr("transform", "translate(0, 0) scale(0.8)")
+                    .attr("fill", "blue")
+                    .attr("stroke", "blue")
+                    .attr("stroke-width", 1.5);
+
+                legend.append("text")
+                    .attr("x", 20)
+                    .attr("y", 5)
+                    .attr("class", "legend")
+                    .text("Good rating");
+
+                legend.append("circle")
+                    .attr("cx", 0)
+                    .attr("cy", 20)
+                    .attr("r", 4)
+                    .attr("fill", "red")
+                    .attr("stroke", "red")
+                    .attr("stroke-width", 1.5);
+
+                legend.append("text")
+                    .attr("x", 20)
+                    .attr("y", 25)
+                    .attr("class", "legend")
+                    .text("Bad rating");
+            }
+
+            // Part A: Plot 1 - Wins+Nominations vs IMDb Rating
+            createScatterPlot("#plot1",
+                d => d.imdbRating,
+                d => d.WinsNoms,
+                "IMDb Rating",
+                "Wins+Noms",
+                "Wins+Nominations vs. IMDb Rating"
+            );
+
+            // Part A: Plot 2 - Budget vs IMDb Rating
+            createScatterPlot("#plot2",
+                d => d.imdbRating,
+                d => d.Budget,
+                "IMDb Rating",
+                "Budget",
+                "Budget vs. IMDb Rating"
+            );
+
+            // Part B: Votes vs IMDb Rating (sized by Wins+Noms)
+            // Create size scale for Wins+Noms
+            const maxWinsNoms = d3.max(data, d => d.WinsNoms);
+            const sizeScale = d3.scaleLinear()
+                .domain([0, maxWinsNoms])
+                .range([20, 200]); // Size range for symbols
+
+            createScatterPlot("#plot3",
+                d => d.imdbRating,
+                d => d.imdbVotes,
+                "IMDb Rating",
+                "IMDb Votes",
+                "Votes vs. IMDb Rating sized by Wins+Nominations",
+                d3.scaleLinear,
+                d3.scaleLinear,
+                sizeScale
+            );
+
+            // Part C: Plot 1 - Square root scale
+            createScatterPlot("#plot4",
+                d => d.imdbRating,
+                d => d.WinsNoms,
+                "IMDb Rating",
+                "Wins+Noms",
+                "Wins+Nominations (square-root-scaled) vs. IMDb Rating",
+                d3.scaleLinear,
+                d3.scaleSqrt
+            );
+
+            // Part C: Plot 2 - Log scale
+            // For log scale, we need to create a custom plot that filters out zero values
+            const svg5 = d3.select("#plot5")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom);
+
+            const g5 = svg5.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            // Filter out zero values for log scale
+            const logData = data.filter(d => d.WinsNoms > 0);
+
+            const xScale5 = d3.scaleLinear()
+                .domain(d3.extent(data, d => d.imdbRating))
+                .range([0, width])
+                .nice();
+
+            const yExtent5 = d3.extent(logData, d => d.WinsNoms);
+            const minValue5 = d3.min(logData, d => d.WinsNoms);
+            const yScale5 = d3.scaleLog()
+                .domain([minValue5, yExtent5[1]])
+                .range([height, 0])
+                .nice();
+
+            const xAxis5 = d3.axisBottom(xScale5);
+            const yAxis5 = d3.axisLeft(yScale5);
+
+            g5.append("g")
+                .attr("transform", "translate(0," + height + ")")
+                .call(xAxis5);
+
+            g5.append("g")
+                .call(yAxis5);
+
+            g5.append("text")
+                .attr("transform", "translate(" + (width / 2) + " ," + (height + margin.bottom - 10) + ")")
+                .style("text-anchor", "middle")
+                .attr("class", "axis-label")
+                .text("IMDb Rating");
+
+            g5.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 0 - margin.left)
+                .attr("x", 0 - (height / 2))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .attr("class", "axis-label")
+                .text("Wins+Noms");
+
+            g5.append("text")
+                .attr("x", width / 2)
+                .attr("y", -30)
+                .attr("text-anchor", "middle")
+                .attr("class", "title")
+                .text("Wins+Nominations (log-scaled) vs. IMDb Rating");
+
+            const goodData5 = logData.filter(d => d.IsGoodRating === 1);
+            const badData5 = logData.filter(d => d.IsGoodRating === 0);
+
+            g5.selectAll(".good-point")
+                .data(goodData5)
+                .enter().append("path")
+                .attr("d", createCrossSymbol())
+                .attr("transform", d => {
+                    const x = xScale5(d.imdbRating);
+                    const y = yScale5(d.WinsNoms);
+                    return "translate(" + x + "," + y + ")";
+                })
+                .attr("fill", "blue")
+                .attr("stroke", "blue")
+                .attr("stroke-width", 1.5);
+
+            g5.selectAll(".bad-point")
+                .data(badData5)
+                .enter().append("circle")
+                .attr("cx", d => xScale5(d.imdbRating))
+                .attr("cy", d => yScale5(d.WinsNoms))
+                .attr("r", 4)
+                .attr("fill", "red")
+                .attr("stroke", "red")
+                .attr("stroke-width", 1.5);
+
+            const legend5 = g5.append("g")
+                .attr("transform", "translate(" + (width - 80) + ", 20)");
+
+            legend5.append("path")
+                .attr("d", createCrossSymbol())
+                .attr("transform", "translate(0, 0) scale(0.8)")
+                .attr("fill", "blue")
+                .attr("stroke", "blue")
+                .attr("stroke-width", 1.5);
+
+            legend5.append("text")
+                .attr("x", 20)
+                .attr("y", 5)
+                .attr("class", "legend")
+                .text("Good rating");
+
+            legend5.append("circle")
+                .attr("cx", 0)
+                .attr("cy", 20)
+                .attr("r", 4)
+                .attr("fill", "red")
+                .attr("stroke", "red")
+                .attr("stroke-width", 1.5);
+
+            legend5.append("text")
+                .attr("x", 20)
+                .attr("y", 25)
+                .attr("class", "legend")
+                .text("Bad rating");
+        }).catch(function(error) {
+            console.error("Error loading CSV:", error);
+            alert("Error loading CSV file. Make sure you're opening this file through a web server (not file://).\n\nTry: python -m http.server 8000\nThen open: http://localhost:8000/index.html");
+        });
+    </script>
+</body>
+</html>

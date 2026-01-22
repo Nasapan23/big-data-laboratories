@@ -1,0 +1,3 @@
+Square root scale: Useful for data with wide ranges, compresses large values while preserving smaller differences. Good for area metrics.
+
+Log scale: Best for data spanning multiple orders of magnitude. Makes exponential relationships appear linear, useful when values range from very small to very large.
